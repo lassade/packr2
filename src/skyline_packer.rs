@@ -23,8 +23,6 @@ impl Skyline {
 
 pub struct SkylinePacker {
     config: PackerConfig,
-    border: Rect,
-
     // the skylines are sorted by their `x` position
     skylines: Vec<Skyline>,
 }
@@ -37,11 +35,7 @@ impl SkylinePacker {
             w: config.max_width,
         }];
 
-        SkylinePacker {
-            config,
-            border: Rect::new(0, 0, config.max_width, config.max_height),
-            skylines,
-        }
+        SkylinePacker { config, skylines }
     }
 
     // return `rect` if rectangle (w, h) can fit the skyline started at `i`
@@ -51,7 +45,9 @@ impl SkylinePacker {
         loop {
             rect.y = max(rect.y, self.skylines[i].y);
             // the source rect is too large
-            if !self.border.contains(&rect) {
+            if (rect.x + rect.w) > self.config.max_width
+                || (rect.y + rect.h) > self.config.max_height
+            {
                 return None;
             }
             if self.skylines[i].w >= width_left {
@@ -102,8 +98,8 @@ impl SkylinePacker {
             w: rect.w,
         };
 
-        assert!(skyline.right() <= self.border.right());
-        assert!(skyline.y <= self.border.bottom());
+        assert!(skyline.right() < self.config.max_width);
+        assert!(skyline.y < self.config.max_height);
 
         self.skylines.insert(index, skyline);
 
@@ -137,6 +133,22 @@ impl SkylinePacker {
             i += 1;
         }
     }
+
+    pub fn can_pack(&self, w: u32, h: u32) -> bool {
+        if let Some((_, rect)) = self.find_skyline(
+            w + self.config.texture_padding + self.config.texture_extrusion * 2,
+            h + self.config.texture_padding + self.config.texture_extrusion * 2,
+        ) {
+            let skyline = Skyline {
+                x: rect.left(),
+                y: rect.bottom() + 1,
+                w: w,
+            };
+
+            return skyline.right() < self.config.max_width && skyline.y < self.config.max_height;
+        }
+        false
+    }
 }
 
 impl<K> Packer<K> for SkylinePacker {
@@ -165,19 +177,7 @@ impl<K> Packer<K> for SkylinePacker {
         }
     }
 
-    fn can_pack(&self, w: u32, h: u32) -> bool {
-        if let Some((_, rect)) = self.find_skyline(
-            w + self.config.texture_padding + self.config.texture_extrusion * 2,
-            h + self.config.texture_padding + self.config.texture_extrusion * 2,
-        ) {
-            let skyline = Skyline {
-                x: rect.left(),
-                y: rect.bottom() + 1,
-                w: w,
-            };
-
-            return skyline.right() <= self.border.right() && skyline.y <= self.border.bottom();
-        }
-        false
+    fn config(&self) -> &PackerConfig {
+        &self.config
     }
 }

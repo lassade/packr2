@@ -1,14 +1,17 @@
 //! Rectangle packing algorithm
 
-// todo: include egui algorithm witch is a somewhat modded verson of ...
-// todo: include maybe rectpack2D (but using a dynamic version)
+// useful refs https://cgi.csc.liv.ac.uk/~epa/surveyhtml.html
+// todo: include egui algorithm witch is a strip_packer
+// todo: include maybe `rectpack2D` (but using a dynamic version)
 // todo: https://blackpawn.com/texts/lightmaps/default.html
 
 // original source copied from: texture_packer https://github.com/PistonDevelopers/texture_packer
 
-pub use self::skyline_packer::SkylinePacker;
+pub use skyline_packer::SkylinePacker;
+pub use strip_packer::StripPacker;
 
 mod skyline_packer;
+mod strip_packer;
 
 /// Configuration for a texture packer.
 #[derive(Debug, Copy, Clone)]
@@ -21,6 +24,10 @@ pub struct PackerConfig {
     /// rotated 90 degrees clockwise.
     pub allow_rotation: bool,
     /// Size of the padding between frames in pixel. Default value is `2`
+    ///
+    /// On some low-precision GPUs characters get muddled up
+    /// if we don't add some empty pixels between the characters.
+    /// On modern high-precision GPUs this is not needed.
     pub texture_padding: u32,
     /// Size of the repeated pixels at the border of each image. Default value is `0`.
     pub texture_extrusion: u32,
@@ -123,5 +130,5 @@ pub struct Frame<K> {
 
 pub trait Packer<K> {
     fn pack(&mut self, key: K, w: u32, h: u32) -> Option<Frame<K>>;
-    fn can_pack(&self, w: u32, h: u32) -> bool;
+    fn config(&self) -> &PackerConfig;
 }
