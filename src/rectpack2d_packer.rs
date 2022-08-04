@@ -1,7 +1,7 @@
 use super::{Frame, Packer, PackerConfig, Rect};
 
 struct created_splits {
-    count: usize,
+    count: u32,
     spaces: [Rect; 2],
 }
 
@@ -27,7 +27,7 @@ impl From<[Rect; 2]> for created_splits {
 impl created_splits {
     const fn failed() -> Self {
         Self {
-            count: core::usize::MAX,
+            count: core::u32::MAX,
             // safety: spaces are invalid
             spaces: unsafe { core::mem::MaybeUninit::uninit().assume_init() },
         }
@@ -46,7 +46,7 @@ impl created_splits {
     }
 
     const fn is_failed(&self) -> bool {
-        self.count != core::usize::MAX
+        self.count > 2
     }
 
     #[inline]
@@ -146,5 +146,75 @@ impl created_splits {
         };
 
         return [bigger_split, lesser_split].into();
+    }
+}
+
+pub trait empty_spaces {
+    fn remove(&mut self, i: usize);
+    fn add(&mut self, r: Rect) -> bool;
+    fn get_count(&self) -> usize;
+    fn reset(&mut self);
+    fn get(&self, index: usize) -> &Rect;
+}
+
+pub struct default_empty_spaces {
+    empty_spaces: Vec<Rect>,
+}
+
+impl empty_spaces for default_empty_spaces {
+    fn remove(&mut self, index: usize) {
+        self.empty_spaces.swap_remove(index);
+    }
+
+    fn add(&mut self, r: Rect) -> bool {
+        self.empty_spaces.push(r);
+        true
+    }
+
+    fn get_count(&self) -> usize {
+        self.empty_spaces.len()
+    }
+
+    fn reset(&mut self) {
+        self.empty_spaces.clear();
+    }
+
+    fn get(&self, index: usize) -> &Rect {
+        &self.empty_spaces[index]
+    }
+}
+
+pub struct static_empty_spaces<const MAX_SPACES: usize> {
+    count_spaces: usize,
+    empty_spaces: [Rect; MAX_SPACES],
+}
+
+impl<const MAX_SPACES: usize> empty_spaces for static_empty_spaces<MAX_SPACES> {
+    fn remove(&mut self, i: usize) {
+        self.empty_spaces[i] = self.empty_spaces[self.count_spaces - 1];
+        self.count_spaces -= 1;
+    }
+
+    fn add(&mut self, r: Rect) -> bool {
+        if self.count_spaces < MAX_SPACES {
+            self.empty_spaces[self.count_spaces] = r;
+            self.count_spaces += 1;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    fn get_count(&self) -> usize {
+        self.count_spaces
+    }
+
+    fn reset(&mut self) {
+        self.count_spaces = 0;
+    }
+
+    fn get(&self, index: usize) -> &Rect {
+        &self.empty_spaces[index]
     }
 }
