@@ -1,0 +1,12 @@
+[package]
+name = "packr2"
+version = "0.1.0"
+edition = "2021"
+description = "a few packing algorithms for your needs"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/lassade/packr2"
+authors = ["Felipe Jorge <felipe.jorge.pereira@gmail.com>"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
