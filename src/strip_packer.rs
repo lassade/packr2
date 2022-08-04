@@ -1,3 +1,7 @@
+// useful links:
+// https://cgi.csc.liv.ac.uk/~epa/surveyhtml.html
+// https://github.com/emilk/egui look for texture_atlas.rs
+
 use super::{Frame, Packer, PackerConfig, Rect};
 
 /// Same implementation used by `egui`.
