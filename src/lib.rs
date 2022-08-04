@@ -10,6 +10,7 @@
 pub use skyline_packer::SkylinePacker;
 pub use strip_packer::StripPacker;
 
+mod rectpack2d_packer;
 mod skyline_packer;
 mod strip_packer;
 
