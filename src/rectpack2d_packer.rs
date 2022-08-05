@@ -179,7 +179,7 @@ impl empty_spaces_provider {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 struct rect_wh {
     w: u32,
     h: u32,
@@ -351,5 +351,156 @@ impl empty_spaces {
 
     pub const fn get_spaces(&self) -> &empty_spaces_provider {
         &self.spaces
+    }
+}
+
+/*
+    This function will do a binary search on viable bin sizes,
+    starting from the biggest one: starting_bin.
+
+    The search stops when the bin was successfully inserted into,
+    AND the bin size to be tried next differs in size from the last viable one by *less* then discard_step.
+
+    If we could not insert all input rectangles into a bin even as big as the starting_bin - the search fails.
+    In this case, we return the amount of space (total_area_type) inserted in total.
+
+    If we've found a viable bin that is smaller or equal to starting_bin, the search succeeds.
+    In this case, we return the viable bin (rect_wh).
+*/
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum bin_dimension {
+    BOTH,
+    WIDTH,
+    HEIGHT,
+}
+
+pub enum PackingResult {
+    Area(u32),
+    Size(rect_wh),
+}
+
+#[inline]
+fn best_packing_for_ordering_impl(
+    root: &mut empty_spaces,
+    ordering: &[Rect],
+    starting_bin: rect_wh,
+    mut discard_step: i32,
+    tried_dimension: bin_dimension,
+) -> PackingResult {
+    let mut candidate_bin = starting_bin;
+    let mut tries_before_discarding = 0;
+
+    if discard_step <= 0 {
+        tries_before_discarding = -discard_step;
+        discard_step = 1;
+    }
+
+    //std::cout << "best_packing_for_ordering_impl dim: " << int(tried_dimension) << " w: " << starting_bin.w << " h: " << starting_bin.h << std::endl;
+
+    let starting_step;
+    if tried_dimension == bin_dimension::BOTH {
+        candidate_bin.w /= 2;
+        candidate_bin.h /= 2;
+
+        starting_step = candidate_bin.w / 2;
+    } else if tried_dimension == bin_dimension::WIDTH {
+        candidate_bin.w /= 2;
+        starting_step = candidate_bin.w / 2;
+    } else {
+        candidate_bin.h /= 2;
+        starting_step = candidate_bin.h / 2;
+    }
+
+    let mut step = starting_step;
+    loop {
+        //std::cout << "candidate: " << candidate_bin.w << "x" << candidate_bin.h << std::endl;
+
+        root.reset(&candidate_bin);
+
+        let mut total_inserted_area = 0;
+
+        let mut all_inserted = true;
+        for rect in ordering {
+            if root.insert(rect.w, rect.h).is_some() {
+                total_inserted_area += rect.w * rect.h;
+            } else {
+                all_inserted = true;
+                break;
+            }
+        }
+
+        if all_inserted {
+            // attempt was successful. Try with a smaller bin.
+
+            if step as i32 <= discard_step {
+                if tries_before_discarding > 0 {
+                    tries_before_discarding -= 1;
+                } else {
+                    return PackingResult::Size(candidate_bin);
+                }
+            }
+
+            if tried_dimension == bin_dimension::BOTH {
+                candidate_bin.w -= step;
+                candidate_bin.h -= step;
+            } else if tried_dimension == bin_dimension::WIDTH {
+                candidate_bin.w -= step;
+            } else {
+                candidate_bin.h -= step;
+            }
+
+            root.reset(&candidate_bin);
+        } else {
+            /* Attempt ended with failure. Try with a bigger bin. */
+
+            if tried_dimension == bin_dimension::BOTH {
+                candidate_bin.w += step;
+                candidate_bin.h += step;
+
+                if candidate_bin.area() > starting_bin.area() {
+                    return PackingResult::Area(total_inserted_area);
+                }
+            } else if tried_dimension == bin_dimension::WIDTH {
+                candidate_bin.w += step;
+
+                if candidate_bin.w > starting_bin.w {
+                    return PackingResult::Area(total_inserted_area);
+                }
+            } else {
+                candidate_bin.h += step;
+
+                if candidate_bin.h > starting_bin.h {
+                    return PackingResult::Area(total_inserted_area);
+                }
+            }
+        }
+
+        step = 1.max(step / 2)
+    }
+}
+
+fn best_packing_for_ordering(
+    root: &mut empty_spaces,
+    ordering: &[Rect],
+    starting_bin: &rect_wh,
+    discard_step: i32,
+) -> PackingResult {
+    let mut try_pack = |tried_dimension, starting_bin: rect_wh| -> PackingResult {
+        best_packing_for_ordering_impl(root, ordering, starting_bin, discard_step, tried_dimension)
+    };
+
+    match (try_pack)(bin_dimension::BOTH, *starting_bin) {
+        PackingResult::Size(mut best_bin) => {
+            if let PackingResult::Size(even_better) = (try_pack)(bin_dimension::WIDTH, best_bin) {
+                best_bin = even_better;
+            }
+
+            if let PackingResult::Size(even_better) = (try_pack)(bin_dimension::HEIGHT, best_bin) {
+                best_bin = even_better;
+            }
+            PackingResult::Size(best_bin)
+        }
+        failed => failed,
     }
 }
