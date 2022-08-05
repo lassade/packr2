@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use super::{Frame, Packer, PackerConfig, Rect};
 
 struct created_splits {
@@ -151,34 +149,6 @@ fn insert_and_split(
     return [bigger_split, lesser_split].into();
 }
 
-#[derive(Default)]
-pub struct empty_spaces_provider {
-    empty_spaces: Vec<Rect>,
-}
-
-impl empty_spaces_provider {
-    pub fn remove(&mut self, index: usize) {
-        self.empty_spaces.swap_remove(index);
-    }
-
-    pub fn add(&mut self, r: Rect) -> bool {
-        self.empty_spaces.push(r);
-        true
-    }
-
-    pub fn get_count(&self) -> usize {
-        self.empty_spaces.len()
-    }
-
-    pub fn reset(&mut self) {
-        self.empty_spaces.clear();
-    }
-
-    pub fn get(&self, index: usize) -> &Rect {
-        &self.empty_spaces[index]
-    }
-}
-
 #[derive(Default, Clone, Copy)]
 struct rect_wh {
     w: u32,
@@ -237,20 +207,21 @@ pub struct rect_xywhf {
     flipped: bool,
 }
 
-pub struct empty_spaces {
+/// Derived from the lightmap packer by Jim Scott in [here](https://blackpawn.com/texts/lightmaps/default.html)
+pub struct SplitPacker {
     current_aabb: rect_wh,
-    spaces: empty_spaces_provider,
+    spaces: Vec<Rect>,
     pub enable_flipping: bool,
 }
 
-impl empty_spaces {
+impl SplitPacker {
     pub fn new(w: u32, h: u32) -> Self {
         let mut tmp = Self {
             current_aabb: rect_wh { w: 0, h: 0 },
-            spaces: empty_spaces_provider::default(),
+            spaces: vec![],
             enable_flipping: false,
         };
-        tmp.spaces.add(Rect {
+        tmp.spaces.push(Rect {
             x: 0,
             y: 0,
             w: w,
@@ -261,8 +232,8 @@ impl empty_spaces {
 
     pub fn reset(&mut self, r: &rect_wh) {
         self.current_aabb = rect_wh { w: 0, h: 0 };
-        self.spaces.reset();
-        self.spaces.add(Rect {
+        self.spaces.clear();
+        self.spaces.push(Rect {
             x: 0,
             y: 0,
             w: r.w,
@@ -271,8 +242,8 @@ impl empty_spaces {
     }
 
     pub fn insert(&mut self, w: u32, h: u32) -> Option<rect_xywhf> {
-        for i in (0..self.spaces.get_count()).rev() {
-            let candidate_space = *self.spaces.get(i);
+        for i in (0..self.spaces.len()).rev() {
+            let candidate_space = self.spaces[i];
 
             let normal = insert_and_split(w, h, &candidate_space);
 
@@ -280,9 +251,8 @@ impl empty_spaces {
                 self.spaces.remove(i);
 
                 for s in 0..splits.count as usize {
-                    if !self.spaces.add(splits.spaces[s]) {
-                        return None;
-                    }
+                    // note: it can never fail to insert more spaces, but if it does you must return `None` here!
+                    self.spaces.push(splits.spaces[s]);
                 }
 
                 let r = if flipped {
@@ -346,8 +316,19 @@ impl empty_spaces {
         }
     }
 
-    pub const fn get_spaces(&self) -> &empty_spaces_provider {
-        &self.spaces
+    #[inline]
+    pub fn get_spaces(&self) -> &[Rect] {
+        &self.spaces[..]
+    }
+}
+
+impl<K> Packer<K> for SplitPacker {
+    fn pack(&mut self, key: K, w: u32, h: u32) -> Option<Frame<K>> {
+        todo!()
+    }
+
+    fn config(&self) -> &PackerConfig {
+        todo!()
     }
 }
 
@@ -386,7 +367,7 @@ pub enum PackingResult {
 
 #[inline]
 fn best_packing_for_ordering_impl<K>(
-    root: &mut empty_spaces,
+    root: &mut SplitPacker,
     ordering: &[RectInput<K>],
     starting_bin: rect_wh,
     mut discard_step: i32,
@@ -485,7 +466,7 @@ fn best_packing_for_ordering_impl<K>(
 }
 
 fn best_packing_for_ordering<K>(
-    root: &mut empty_spaces,
+    root: &mut SplitPacker,
     ordering: &[RectInput<K>],
     starting_bin: &rect_wh,
     discard_step: i32,
@@ -545,7 +526,7 @@ fn find_best_packing_impl<'a, K: Copy + 'a>(
         It is always reset before any packing attempt.
     */
 
-    let mut root = empty_spaces::new(0, 0);
+    let mut root = SplitPacker::new(0, 0);
     root.enable_flipping = input.allow_rotation;
 
     for order in order_iterator {
