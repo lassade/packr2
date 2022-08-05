@@ -7,6 +7,7 @@
 
 // original source copied from: texture_packer https://github.com/PistonDevelopers/texture_packer
 
+pub use rectpack2d_packer::SplitPacker;
 pub use skyline_packer::SkylinePacker;
 pub use strip_packer::StripPacker;
 
@@ -23,7 +24,7 @@ pub struct PackerConfig {
     pub max_height: u32,
     /// True to allow rotation of the input images. Default value is `true`. Images rotated will be
     /// rotated 90 degrees clockwise.
-    pub allow_rotation: bool,
+    pub allow_flipping: bool,
     /// Size of the padding between frames in pixel. Default value is `2`
     ///
     /// On some low-precision GPUs characters get muddled up
@@ -39,7 +40,7 @@ impl Default for PackerConfig {
         PackerConfig {
             max_width: 1024,
             max_height: 1024,
-            allow_rotation: true,
+            allow_flipping: true,
             texture_padding: 2,
             texture_extrusion: 0,
         }
@@ -98,6 +99,69 @@ impl Rect {
     }
 }
 
+pub struct Rectf {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+    pub flipped: bool,
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct Size {
+    pub w: u32,
+    pub h: u32,
+}
+
+impl Size {
+    pub const fn new(w: u32, h: u32) -> Self {
+        Self { w, h }
+    }
+
+    pub fn flip(&mut self) -> &Self {
+        core::mem::swap(&mut self.w, &mut self.h);
+        self
+    }
+
+    pub const fn max_side(&self) -> u32 {
+        if self.h > self.w {
+            self.h
+        } else {
+            self.w
+        }
+    }
+
+    pub const fn min_side(&self) -> u32 {
+        if self.h < self.w {
+            self.h
+        } else {
+            self.w
+        }
+    }
+
+    pub const fn area(&self) -> u32 {
+        self.w * self.h
+    }
+
+    pub const fn perimeter(&self) -> u32 {
+        2 * self.w + 2 * self.h
+    }
+
+    pub fn pathological_mult(&self) -> f32 {
+        self.max_side() as f32 / self.min_side() as f32 * self.area() as f32
+    }
+
+    pub fn expand_with_rect(&mut self, r: &Rect) {
+        self.w = self.w.max(r.x + r.w);
+        self.h = self.h.max(r.y + r.h);
+    }
+
+    pub fn expand_with(&mut self, r: &Rectf) {
+        self.w = self.w.max(r.x + r.w);
+        self.h = self.h.max(r.y + r.h);
+    }
+}
+
 /// Boundaries and properties of a packed texture.
 #[derive(Clone, Debug)]
 pub struct Frame<K> {
@@ -107,7 +171,7 @@ pub struct Frame<K> {
     pub uv: Rect,
     /// True if the texture was rotated during packing.
     /// If it was rotated, it was rotated 90 degrees clockwise.
-    pub rotated: bool,
+    pub flipped: bool,
     /// True if the texture was trimmed during packing.
     pub trimmed: bool,
 

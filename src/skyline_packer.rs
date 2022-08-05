@@ -76,7 +76,7 @@ impl SkylinePacker {
                 }
             }
 
-            if self.config.allow_rotation {
+            if self.config.allow_flipping {
                 if let Some(r) = self.can_put(i, h, w) {
                     if r.bottom() < bottom || (r.bottom() == bottom && self.skylines[i].w < width) {
                         bottom = r.bottom();
@@ -168,7 +168,7 @@ impl<K> Packer<K> for SkylinePacker {
             Some(Frame {
                 key,
                 uv: rect,
-                rotated,
+                flipped: rotated,
                 trimmed: false,
                 source: Rect { x: 0, y: 0, w, h },
             })

@@ -1,11 +1,11 @@
-use super::{Frame, Packer, PackerConfig, Rect};
+use crate::{Frame, Packer, PackerConfig, Rect, Rectf, Size};
 
-struct created_splits {
+struct Splits {
     count: u32,
     spaces: [Rect; 2],
 }
 
-impl From<Rect> for created_splits {
+impl From<Rect> for Splits {
     fn from(space: Rect) -> Self {
         Self {
             count: 1,
@@ -18,13 +18,13 @@ impl From<Rect> for created_splits {
     }
 }
 
-impl From<[Rect; 2]> for created_splits {
+impl From<[Rect; 2]> for Splits {
     fn from(spaces: [Rect; 2]) -> Self {
         Self { count: 2, spaces }
     }
 }
 
-impl created_splits {
+impl Splits {
     const fn failed() -> Self {
         Self {
             count: core::u32::MAX,
@@ -41,7 +41,7 @@ impl created_splits {
         }
     }
 
-    const fn better_than(&self, b: &created_splits) -> bool {
+    const fn better_than(&self, b: &Splits) -> bool {
         self.count < b.count
     }
 
@@ -51,81 +51,69 @@ impl created_splits {
 }
 
 #[inline]
-fn insert_and_split(
-    w: u32,    /* Image rectangle */
-    h: u32,    /* Image rectangle */
-    sp: &Rect, /* Space rectangle */
-) -> created_splits {
-    let free_w = sp.w - w;
-    let free_h = sp.h - h;
-
-    if free_w < 0 || free_h < 0 {
-        /*
-            Image is bigger than the candidate empty space.
-            We'll need to look further.
-        */
-        return created_splits::failed();
+fn insert_and_split(w: u32, h: u32, space_available: &Rect /* Space rectangle */) -> Splits {
+    if space_available.w < w || space_available.h < h {
+        // Image is bigger than the candidate empty space.
+        // We'll need to look further.
+        return Splits::failed();
     }
+
+    // sp is always greater than [w, h]
+    let free_w = space_available.w.wrapping_sub(w);
+    let free_h = space_available.h.wrapping_sub(h);
 
     if free_w == 0 && free_h == 0 {
-        /*
-            If the image dimensions equal the dimensions of the candidate empty space (image fits exactly),
-            we will just delete the space and create no splits.
-        */
-        return created_splits::none();
+        // If the image dimensions equal the dimensions of the candidate empty space (image fits exactly),
+        // we will just delete the space and create no splits.
+        return Splits::none();
     }
 
-    /*
-        If the image fits into the candidate empty space,
-        but exactly one of the image dimensions equals the respective dimension of the candidate empty space
-        (e.g. image = 20x40, candidate space = 30x40)
-        we delete the space and create a single split. In this case a 10x40 space.
-    */
+    // If the image fits into the candidate empty space,
+    // but exactly one of the image dimensions equals the respective dimension of the candidate empty space
+    // (e.g. image = 20x40, candidate space = 30x40)
+    // we delete the space and create a single split. In this case a 10x40 space.
     if free_w > 0 && free_h == 0 {
-        let mut r = sp.clone();
+        let mut r = space_available.clone();
         r.x += w;
         r.w -= w;
         return r.into();
     }
 
     if free_w == 0 && free_h > 0 {
-        let mut r = sp.clone();
+        let mut r = space_available.clone();
         r.y += h;
         r.h -= h;
         return r.into();
     }
 
-    /*
-        Every other option has been exhausted,
-        so at this point the image must be *strictly* smaller than the empty space,
-        that is, it is smaller in both width and height.
+    // Every other option has been exhausted,
+    // so at this point the image must be *strictly* smaller than the empty space,
+    // that is, it is smaller in both width and height.
+    //
+    // Thus, free_w and free_h must be positive.
 
-        Thus, free_w and free_h must be positive.
-    */
-    /*
-        Decide which way to split.
-
-        Instead of having two normally-sized spaces,
-        it is better - though I have no proof of that - to have a one tiny space and a one huge space.
-        This creates better opportunity for insertion of future rectangles.
-
-        This is why, if we had more of width remaining than we had of height,
-        we split along the vertical axis,
-        and if we had more of height remaining than we had of width,
-        we split along the horizontal axis.
-    */
+    // Decide which way to split.
+    //
+    // Instead of having two normally-sized spaces,
+    // it is better - though I have no proof of that - to have a one tiny space and a one huge space.
+    // This creates better opportunity for insertion of future rectangles.
+    //
+    // This is why, if we had more of width remaining than we had of height,
+    // we split along the vertical axis,
+    // and if we had more of height remaining than we had of width,
+    // we split along the horizontal axis.
     if free_w > free_h {
         let bigger_split = Rect {
-            x: sp.x + w,
-            y: sp.y,
+            x: space_available.x + w,
+            y: space_available.y,
             w: free_w,
-            h: sp.h,
+            h: space_available.h,
         };
 
         let lesser_split = Rect {
-            x: sp.x,
-            y: sp.y + h,
-            w,
+            x: space_available.x,
+            y: space_available.y + h,
+            w: w,
             h: free_h,
         };
 
@@ -133,15 +121,15 @@ fn insert_and_split(
     }
 
     let bigger_split = Rect {
-        x: sp.x,
-        y: sp.y + h,
-        w: sp.w,
+        x: space_available.x,
+        y: space_available.y + h,
+        w: space_available.w,
         h: free_h,
     };
 
     let lesser_split = Rect {
-        x: sp.x + w,
-        y: sp.y,
+        x: space_available.x + w,
+        y: space_available.y,
         w: free_w,
         h: h,
     };
@@ -149,75 +137,16 @@ fn insert_and_split(
     return [bigger_split, lesser_split].into();
 }
 
-#[derive(Default, Clone, Copy)]
-struct rect_wh {
-    w: u32,
-    h: u32,
-}
-
-impl rect_wh {
-    const fn new(w: u32, h: u32) -> Self {
-        Self { w, h }
-    }
-
-    fn flip(&mut self) -> &Self {
-        core::mem::swap(&mut self.w, &mut self.h);
-        self
-    }
-
-    const fn max_side(&self) -> u32 {
-        if self.h > self.w {
-            self.h
-        } else {
-            self.w
-        }
-    }
-
-    const fn min_side(&self) -> u32 {
-        if self.h < self.w {
-            self.h
-        } else {
-            self.w
-        }
-    }
-
-    const fn area(&self) -> u32 {
-        self.w * self.h
-    }
-
-    const fn perimeter(&self) -> u32 {
-        2 * self.w + 2 * self.h
-    }
-
-    fn pathological_mult(&self) -> f32 {
-        self.max_side() as f32 / self.min_side() as f32 * self.area() as f32
-    }
-
-    fn expand_with(&mut self, r: &rect_xywhf) {
-        self.w = self.w.max(r.x + r.w);
-        self.h = self.h.max(r.y + r.h);
-    }
-}
-
-pub struct rect_xywhf {
-    x: u32,
-    y: u32,
-    w: u32,
-    h: u32,
-    flipped: bool,
-}
-
-/// Derived from the lightmap packer by Jim Scott in [here](https://blackpawn.com/texts/lightmaps/default.html)
-pub struct SplitPacker {
-    current_aabb: rect_wh,
+struct EmptySpaces {
+    current_aabb: Size,
     spaces: Vec<Rect>,
     pub enable_flipping: bool,
 }
 
-impl SplitPacker {
-    pub fn new(w: u32, h: u32) -> Self {
+impl EmptySpaces {
+    fn new(w: u32, h: u32) -> Self {
         let mut tmp = Self {
-            current_aabb: rect_wh { w: 0, h: 0 },
+            current_aabb: Size { w: 0, h: 0 },
             spaces: vec![],
             enable_flipping: false,
         };
@@ -230,8 +159,8 @@ impl SplitPacker {
         tmp
     }
 
-    pub fn reset(&mut self, r: &rect_wh) {
-        self.current_aabb = rect_wh { w: 0, h: 0 };
+    fn reset(&mut self, r: &Size) {
+        self.current_aabb = Size { w: 0, h: 0 };
         self.spaces.clear();
         self.spaces.push(Rect {
             x: 0,
@@ -241,13 +170,13 @@ impl SplitPacker {
         });
     }
 
-    pub fn insert(&mut self, w: u32, h: u32) -> Option<rect_xywhf> {
+    fn insert(&mut self, w: u32, h: u32) -> Option<Rectf> {
         for i in (0..self.spaces.len()).rev() {
             let candidate_space = self.spaces[i];
 
             let normal = insert_and_split(w, h, &candidate_space);
 
-            let mut accept_insert = |splits: &created_splits, flipped| -> Option<rect_xywhf> {
+            let mut accept_insert = |splits: &Splits, flipped| -> Option<Rectf> {
                 self.spaces.remove(i);
 
                 for s in 0..splits.count as usize {
@@ -256,7 +185,7 @@ impl SplitPacker {
                 }
 
                 let r = if flipped {
-                    rect_xywhf {
+                    Rectf {
                         x: candidate_space.x,
                         y: candidate_space.y,
                         w: h,
@@ -264,11 +193,11 @@ impl SplitPacker {
                         flipped,
                     }
                 } else {
-                    rect_xywhf {
+                    Rectf {
                         x: candidate_space.x,
                         y: candidate_space.y,
-                        w: h,
-                        h: w,
+                        w,
+                        h,
                         flipped,
                     }
                 };
@@ -309,42 +238,60 @@ impl SplitPacker {
         None
     }
 
-    pub const fn get_rects_aabb(&self) -> rect_wh {
-        rect_wh {
-            w: self.current_aabb.w,
-            h: self.current_aabb.h,
-        }
+    const fn get_rects_aabb(&self) -> Size {
+        self.current_aabb
     }
 
     #[inline]
-    pub fn get_spaces(&self) -> &[Rect] {
+    fn get_spaces(&self) -> &[Rect] {
         &self.spaces[..]
+    }
+}
+
+/// Derived from the [lightmap packer](https://blackpawn.com/texts/lightmaps/default.html)
+/// but uses a vector instead a tree, sourced from [`rectpack2D`](https://github.com/TeamHypersomnia/rectpack2D)
+pub struct SplitPacker {
+    spaces: EmptySpaces,
+    config: PackerConfig,
+}
+
+impl SplitPacker {
+    pub fn new(config: PackerConfig) -> Self {
+        Self {
+            config,
+            spaces: EmptySpaces::new(0, 0),
+        }
+    }
+
+    pub const fn size_used(&self) -> Size {
+        self.spaces.get_rects_aabb()
+    }
+
+    pub fn remaning_splits(&self) -> &[Rect] {
+        self.spaces.get_spaces()
     }
 }
 
 impl<K> Packer<K> for SplitPacker {
     fn pack(&mut self, key: K, w: u32, h: u32) -> Option<Frame<K>> {
-        todo!()
+        self.spaces.insert(w, h).map(|rect| Frame {
+            key,
+            uv: Rect {
+                x: rect.x,
+                y: rect.y,
+                w: rect.w,
+                h: rect.h,
+            },
+            flipped: rect.flipped,
+            trimmed: false,
+            source: Rect { x: 0, y: 0, w, h },
+        })
     }
 
     fn config(&self) -> &PackerConfig {
-        todo!()
+        &self.config
     }
 }
-
-/*
-    This function will do a binary search on viable bin sizes,
-    starting from the biggest one: starting_bin.
-
-    The search stops when the bin was successfully inserted into,
-    AND the bin size to be tried next differs in size from the last viable one by *less* then discard_step.
-
-    If we could not insert all input rectangles into a bin even as big as the starting_bin - the search fails.
-    In this case, we return the amount of space (total_area_type) inserted in total.
-
-    If we've found a viable bin that is smaller or equal to starting_bin, the search succeeds.
-    In this case, we return the viable bin (rect_wh).
-*/
 
 #[derive(Clone, Debug)]
 pub struct RectInput<K> {
@@ -354,22 +301,34 @@ pub struct RectInput<K> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum bin_dimension {
-    BOTH,
-    WIDTH,
-    HEIGHT,
+enum bin_dimension {
+    Both,
+    Width,
+    Height,
 }
 
-pub enum PackingResult {
+enum PackingResult {
     Area(u32),
-    Size(rect_wh),
+    Size(Size),
 }
+
+// This function will do a binary search on viable bin sizes,
+// starting from the biggest one: starting_bin.
+//
+// The search stops when the bin was successfully inserted into,
+// AND the bin size to be tried next differs in size from the last viable one by *less* then discard_step.
+//
+// If we could not insert all input rectangles into a bin even as big as the starting_bin - the search fails.
+// In this case, we return the amount of space (total_area_type) inserted in total.
+//
+// If we've found a viable bin that is smaller or equal to starting_bin, the search succeeds.
+// In this case, we return the viable bin (rect_wh).
 
 #[inline]
 fn best_packing_for_ordering_impl<K>(
-    root: &mut SplitPacker,
+    root: &mut EmptySpaces,
     ordering: &[RectInput<K>],
-    starting_bin: rect_wh,
+    starting_bin: Size,
     mut discard_step: i32,
     tried_dimension: bin_dimension,
 ) -> PackingResult {
@@ -384,12 +343,12 @@ fn best_packing_for_ordering_impl<K>(
     //std::cout << "best_packing_for_ordering_impl dim: " << int(tried_dimension) << " w: " << starting_bin.w << " h: " << starting_bin.h << std::endl;
 
     let starting_step;
-    if tried_dimension == bin_dimension::BOTH {
+    if tried_dimension == bin_dimension::Both {
         candidate_bin.w /= 2;
         candidate_bin.h /= 2;
 
         starting_step = candidate_bin.w / 2;
-    } else if tried_dimension == bin_dimension::WIDTH {
+    } else if tried_dimension == bin_dimension::Width {
         candidate_bin.w /= 2;
         starting_step = candidate_bin.w / 2;
     } else {
@@ -426,10 +385,10 @@ fn best_packing_for_ordering_impl<K>(
                 }
             }
 
-            if tried_dimension == bin_dimension::BOTH {
+            if tried_dimension == bin_dimension::Both {
                 candidate_bin.w -= step;
                 candidate_bin.h -= step;
-            } else if tried_dimension == bin_dimension::WIDTH {
+            } else if tried_dimension == bin_dimension::Width {
                 candidate_bin.w -= step;
             } else {
                 candidate_bin.h -= step;
@@ -439,14 +398,14 @@ fn best_packing_for_ordering_impl<K>(
         } else {
             /* Attempt ended with failure. Try with a bigger bin. */
 
-            if tried_dimension == bin_dimension::BOTH {
+            if tried_dimension == bin_dimension::Both {
                 candidate_bin.w += step;
                 candidate_bin.h += step;
 
                 if candidate_bin.area() > starting_bin.area() {
                     return PackingResult::Area(total_inserted_area);
                 }
-            } else if tried_dimension == bin_dimension::WIDTH {
+            } else if tried_dimension == bin_dimension::Width {
                 candidate_bin.w += step;
 
                 if candidate_bin.w > starting_bin.w {
@@ -466,22 +425,22 @@ fn best_packing_for_ordering_impl<K>(
 }
 
 fn best_packing_for_ordering<K>(
-    root: &mut SplitPacker,
+    root: &mut EmptySpaces,
     ordering: &[RectInput<K>],
-    starting_bin: &rect_wh,
+    starting_bin: &Size,
     discard_step: i32,
 ) -> PackingResult {
-    let mut try_pack = |tried_dimension, starting_bin: rect_wh| -> PackingResult {
+    let mut try_pack = |tried_dimension, starting_bin: Size| -> PackingResult {
         best_packing_for_ordering_impl(root, ordering, starting_bin, discard_step, tried_dimension)
     };
 
-    match (try_pack)(bin_dimension::BOTH, *starting_bin) {
+    match (try_pack)(bin_dimension::Both, *starting_bin) {
         PackingResult::Size(mut best_bin) => {
-            if let PackingResult::Size(even_better) = (try_pack)(bin_dimension::WIDTH, best_bin) {
+            if let PackingResult::Size(even_better) = (try_pack)(bin_dimension::Width, best_bin) {
                 best_bin = even_better;
             }
 
-            if let PackingResult::Size(even_better) = (try_pack)(bin_dimension::HEIGHT, best_bin) {
+            if let PackingResult::Size(even_better) = (try_pack)(bin_dimension::Height, best_bin) {
                 best_bin = even_better;
             }
             PackingResult::Size(best_bin)
@@ -511,8 +470,8 @@ fn find_best_packing_impl<'a, K: Copy + 'a>(
     discard_step: i32,
     handle_successful_insertion: impl Fn(Frame<K>) -> bool,
     handle_unsuccessful_insertion: impl Fn(&RectInput<K>) -> bool,
-) -> rect_wh {
-    let max_bin = rect_wh {
+) -> Size {
+    let max_bin = Size {
         w: input.max_width,
         h: input.max_width,
     };
@@ -526,8 +485,8 @@ fn find_best_packing_impl<'a, K: Copy + 'a>(
         It is always reset before any packing attempt.
     */
 
-    let mut root = SplitPacker::new(0, 0);
-    root.enable_flipping = input.allow_rotation;
+    let mut root = EmptySpaces::new(0, 0);
+    root.enable_flipping = input.allow_flipping;
 
     for order in order_iterator {
         match best_packing_for_ordering(&mut root, order, &max_bin, discard_step) {
@@ -565,7 +524,7 @@ fn find_best_packing_impl<'a, K: Copy + 'a>(
                     w: rect.w,
                     h: rect.h,
                 },
-                rotated: rect.flipped,
+                flipped: rect.flipped,
                 trimmed: false,
                 source: Rect {
                     x: 0,

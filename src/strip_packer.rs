@@ -77,7 +77,7 @@ impl<K> Packer<K> for StripPacker {
                 w,
                 h,
             },
-            rotated: false,
+            flipped: false,
             trimmed: false,
             source: Rect { x: 0, y: 0, w, h },
         })
