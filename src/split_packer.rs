@@ -142,14 +142,14 @@ fn insert_and_split(w: u32, h: u32, space_available: Rect) -> Splits {
 #[repr(C)]
 struct Recta {
     rect: Rect,
-    area: u32,
+    area: u64,
 }
 
 impl From<Rect> for Recta {
     fn from(rect: Rect) -> Self {
         Self {
             rect,
-            area: rect.w * rect.h,
+            area: rect.w as u64 * rect.h as u64,
         }
     }
 }

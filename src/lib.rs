@@ -49,8 +49,8 @@ impl Rect {
         Rect { x, y, w, h }
     }
 
-    pub const fn area(&self) -> u32 {
-        self.w * self.h
+    pub const fn area(&self) -> u64 {
+        self.w as u64 * self.h as u64
     }
 
     pub const fn size(&self) -> Size {
@@ -161,12 +161,12 @@ impl Size {
         }
     }
 
-    pub const fn area(&self) -> u32 {
-        self.w * self.h
+    pub const fn area(&self) -> u64 {
+        self.w as u64 * self.h as u64
     }
 
-    pub const fn perimeter(&self) -> u32 {
-        2 * self.w + 2 * self.h
+    pub const fn perimeter(&self) -> u64 {
+        2 * (self.w as u64) + 2 * (self.h as u64)
     }
 
     pub fn pathological_mult(&self) -> f32 {
@@ -220,7 +220,7 @@ pub fn pack<P: Packer, K: Copy>(
     mut packer: P,
 ) -> Vec<RectOutput<K>> {
     let mut output = vec![];
-    let mut output_area = core::u32::MAX;
+    let mut output_area = core::u64::MAX;
 
     let mut current = vec![];
     let mut current_area;
