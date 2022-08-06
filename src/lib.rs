@@ -213,8 +213,10 @@ pub const RECT_SORT_FUNCTIONS: [fn(Size, Size) -> Ordering; 6] = [
     },
 ];
 
-/// Sorts the input data using the vaious heuristics defined in [`RECT_SORT_FUNCTIONS`] to find the best possible packing,
+/// Sorts the input data using the heuristics defined in [`RECT_SORT_FUNCTIONS`] to find the best possible packing,
 /// the results might end up been inside multiple atlases.
+///
+/// The output is sorted by atlas.
 pub fn pack<P: Packer, K: Copy>(
     inputs: &mut Vec<RectInput<K>>,
     mut packer: P,
