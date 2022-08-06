@@ -105,8 +105,8 @@ impl SkylinePacker {
             w: rect.w,
         };
 
-        assert!(skyline.right() < self.config.max_width);
-        assert!(skyline.y < self.config.max_height);
+        assert!(skyline.right() <= self.config.max_width);
+        assert!(skyline.y <= self.config.max_height);
 
         self.skylines.insert(index, skyline);
 
