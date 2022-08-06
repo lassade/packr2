@@ -1,6 +1,6 @@
 // original source copied from: texture_packer https://github.com/PistonDevelopers/texture_packer
 
-use super::{Frame, Packer, PackerConfig, Rect};
+use super::{Packer, PackerConfig, Rect, Rectf};
 use std::cmp::max;
 
 struct Skyline {
@@ -133,51 +133,25 @@ impl SkylinePacker {
             i += 1;
         }
     }
-
-    pub fn can_pack(&self, w: u32, h: u32) -> bool {
-        if let Some((_, rect)) = self.find_skyline(
-            w + self.config.texture_padding + self.config.texture_extrusion * 2,
-            h + self.config.texture_padding + self.config.texture_extrusion * 2,
-        ) {
-            let skyline = Skyline {
-                x: rect.left(),
-                y: rect.bottom() + 1,
-                w: w,
-            };
-
-            return skyline.right() < self.config.max_width && skyline.y < self.config.max_height;
-        }
-        false
-    }
 }
 
-impl<K> Packer<K> for SkylinePacker {
-    fn pack(&mut self, key: K, mut w: u32, mut h: u32) -> Option<Frame<K>> {
-        w += self.config.texture_padding + self.config.texture_extrusion * 2;
-        h += self.config.texture_padding + self.config.texture_extrusion * 2;
-
-        if let Some((i, mut rect)) = self.find_skyline(w, h) {
+impl Packer for SkylinePacker {
+    fn insert(&mut self, w: u32, h: u32) -> Option<Rectf> {
+        if let Some((i, rect)) = self.find_skyline(w, h) {
             self.split(i, &rect);
             self.merge();
-
-            let rotated = w != rect.w;
-
-            rect.w -= self.config.texture_padding + self.config.texture_extrusion * 2;
-            rect.h -= self.config.texture_padding + self.config.texture_extrusion * 2;
-
-            Some(Frame {
-                key,
-                uv: rect,
-                flipped: rotated,
-                trimmed: false,
-                source: Rect { x: 0, y: 0, w, h },
-            })
+            Some(Rectf::from_rect(rect, w != rect.w))
         } else {
             None
         }
     }
 
-    fn config(&self) -> &PackerConfig {
-        &self.config
+    fn reset(&mut self) {
+        self.skylines.clear();
+        self.skylines.push(Skyline {
+            x: 0,
+            y: 0,
+            w: self.config.max_width,
+        });
     }
 }

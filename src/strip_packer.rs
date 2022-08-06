@@ -2,7 +2,7 @@
 // https://cgi.csc.liv.ac.uk/~epa/surveyhtml.html
 // https://github.com/emilk/egui look for texture_atlas.rs
 
-use super::{Frame, Packer, PackerConfig, Rect};
+use crate::{Packer, PackerConfig, Rectf};
 
 /// Same implementation used by `egui`.
 #[derive(Clone)]
@@ -39,8 +39,8 @@ impl StripPacker {
     }
 }
 
-impl<K> Packer<K> for StripPacker {
-    fn pack(&mut self, key: K, w: u32, h: u32) -> Option<Frame<K>> {
+impl Packer for StripPacker {
+    fn insert(&mut self, w: u32, h: u32) -> Option<Rectf> {
         // this current algorithm works best for fonts
         // because they all use the have about the same height
 
@@ -54,7 +54,7 @@ impl<K> Packer<K> for StripPacker {
         if self.cursor[0] + w > self.config.max_width {
             // new row:
             self.cursor[0] = 0;
-            self.cursor[1] += self.row_height + self.config.texture_padding;
+            self.cursor[1] += self.row_height;
             self.row_height = 0;
         }
 
@@ -67,23 +67,20 @@ impl<K> Packer<K> for StripPacker {
         }
 
         let pos = self.cursor;
-        self.cursor[0] += w + self.config.texture_padding;
+        self.cursor[0] += w;
 
-        Some(Frame {
-            key,
-            uv: Rect {
-                x: pos[0],
-                y: pos[1],
-                w,
-                h,
-            },
+        Some(Rectf {
+            x: pos[0],
+            y: pos[1],
+            w,
+            h,
             flipped: false,
-            trimmed: false,
-            source: Rect { x: 0, y: 0, w, h },
         })
     }
 
-    fn config(&self) -> &PackerConfig {
-        &self.config
+    fn reset(&mut self) {
+        self.cursor = [0; 2];
+        self.row_height = 0;
+        self.overflowed = false;
     }
 }

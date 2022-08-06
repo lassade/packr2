@@ -7,12 +7,15 @@
 
 // original source copied from: texture_packer https://github.com/PistonDevelopers/texture_packer
 
-pub use rectpack2d_packer::SplitPacker;
+use std::ops::Deref;
+
 pub use skyline_packer::SkylinePacker;
+pub use split_packer::SplitPacker;
 pub use strip_packer::StripPacker;
 
-mod rectpack2d_packer;
+//mod optimize;
 mod skyline_packer;
+mod split_packer;
 mod strip_packer;
 
 /// Configuration for a texture packer.
@@ -25,14 +28,6 @@ pub struct PackerConfig {
     /// True to allow rotation of the input images. Default value is `true`. Images rotated will be
     /// rotated 90 degrees clockwise.
     pub allow_flipping: bool,
-    /// Size of the padding between frames in pixel. Default value is `2`
-    ///
-    /// On some low-precision GPUs characters get muddled up
-    /// if we don't add some empty pixels between the characters.
-    /// On modern high-precision GPUs this is not needed.
-    pub texture_padding: u32,
-    /// Size of the repeated pixels at the border of each image. Default value is `0`.
-    pub texture_extrusion: u32,
 }
 
 impl Default for PackerConfig {
@@ -41,22 +36,17 @@ impl Default for PackerConfig {
             max_width: 1024,
             max_height: 1024,
             allow_flipping: true,
-            texture_padding: 2,
-            texture_extrusion: 0,
         }
     }
 }
 
 /// Defines a rectangle in pixels with the origin at the top-left of the texture atlas.
 #[derive(Copy, Clone, Debug)]
+#[repr(C)]
 pub struct Rect {
-    /// Horizontal position the rectangle begins at.
     pub x: u32,
-    /// Vertical position the rectangle begins at.
     pub y: u32,
-    /// Width of the rectangle.
     pub w: u32,
-    /// Height of the rectangle.
     pub h: u32,
 }
 
@@ -75,6 +65,7 @@ impl Rect {
     /// Get the bottom coordinate of the rectangle.
     #[inline(always)]
     pub fn bottom(&self) -> u32 {
+        // todo: badly defined, remove the -1
         self.y + self.h - 1
     }
 
@@ -87,6 +78,7 @@ impl Rect {
     /// Get the right coordinate of the rectangle.
     #[inline(always)]
     pub fn right(&self) -> u32 {
+        // todo: badly defined, remove the -1
         self.x + self.w - 1
     }
 
@@ -99,12 +91,35 @@ impl Rect {
     }
 }
 
+/// [`Rect`] that could be flipped sideway (rotated by 90 degrees clockwise)
+#[repr(C)]
 pub struct Rectf {
     pub x: u32,
     pub y: u32,
     pub w: u32,
     pub h: u32,
     pub flipped: bool,
+}
+
+impl Rectf {
+    pub fn from_rect(Rect { x, y, w, h }: Rect, flipped: bool) -> Self {
+        Self {
+            x,
+            y,
+            w,
+            h,
+            flipped,
+        }
+    }
+}
+
+impl Deref for Rectf {
+    type Target = Rect;
+
+    fn deref(&self) -> &Self::Target {
+        // safety: the fields of `Rect` are included inside `Rectf` in the same order
+        unsafe { core::mem::transmute(self) }
+    }
 }
 
 #[derive(Default, Clone, Copy)]
@@ -151,49 +166,13 @@ impl Size {
         self.max_side() as f32 / self.min_side() as f32 * self.area() as f32
     }
 
-    pub fn expand_with_rect(&mut self, r: &Rect) {
-        self.w = self.w.max(r.x + r.w);
-        self.h = self.h.max(r.y + r.h);
-    }
-
-    pub fn expand_with(&mut self, r: &Rectf) {
+    pub fn expand_with(&mut self, r: &Rect) {
         self.w = self.w.max(r.x + r.w);
         self.h = self.h.max(r.y + r.h);
     }
 }
 
-/// Boundaries and properties of a packed texture.
-#[derive(Clone, Debug)]
-pub struct Frame<K> {
-    /// Key used to uniquely identify this frame.
-    pub key: K,
-    /// Rectangle describing the texture coordinates and size.
-    pub uv: Rect,
-    /// True if the texture was rotated during packing.
-    /// If it was rotated, it was rotated 90 degrees clockwise.
-    pub flipped: bool,
-    /// True if the texture was trimmed during packing.
-    pub trimmed: bool,
-
-    // (x, y) is the trimmed frame position at original image
-    // (w, h) is original image size
-    //
-    //            w
-    //     +--------------+
-    //     | (x, y)       |
-    //     |  ^           |
-    //     |  |           |
-    //     |  *********   |
-    //     |  *       *   |  h
-    //     |  *       *   |
-    //     |  *********   |
-    //     |              |
-    //     +--------------+
-    /// Source texture size before any trimming.
-    pub source: Rect,
-}
-
-pub trait Packer<K> {
-    fn pack(&mut self, key: K, w: u32, h: u32) -> Option<Frame<K>>;
-    fn config(&self) -> &PackerConfig;
+pub trait Packer {
+    fn insert(&mut self, w: u32, h: u32) -> Option<Rectf>;
+    fn reset(&mut self);
 }
