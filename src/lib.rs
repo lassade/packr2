@@ -13,7 +13,7 @@ pub use skyline_packer::SkylinePacker;
 pub use split_packer::SplitPacker;
 pub use strip_packer::StripPacker;
 
-//mod optimize;
+mod optimize;
 mod skyline_packer;
 mod split_packer;
 mod strip_packer;
@@ -129,6 +129,8 @@ pub struct Size {
 }
 
 impl Size {
+    pub const ZERO: Size = Size::new(0, 0);
+
     pub const fn new(w: u32, h: u32) -> Self {
         Self { w, h }
     }
@@ -174,5 +176,6 @@ impl Size {
 
 pub trait Packer {
     fn insert(&mut self, w: u32, h: u32) -> Option<Rectf>;
-    fn reset(&mut self);
+    fn reset(&mut self, resize: Option<Size>);
+    fn used_area(&self) -> Size;
 }

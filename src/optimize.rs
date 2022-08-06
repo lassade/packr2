@@ -1,3 +1,5 @@
+use crate::{Packer, Size};
+
 // find best packing implementation
 
 #[derive(Clone, Debug)]
@@ -32,8 +34,8 @@ enum PackingResult {
 // In this case, we return the viable bin (rect_wh).
 
 #[inline]
-fn best_packing_for_ordering_impl<K>(
-    root: &mut EmptySpaces,
+fn best_packing_for_ordering_impl<P: Packer, K>(
+    root: &mut P,
     ordering: &[RectInput<K>],
     starting_bin: Size,
     mut discard_step: i32,
@@ -67,7 +69,7 @@ fn best_packing_for_ordering_impl<K>(
     loop {
         //std::cout << "candidate: " << candidate_bin.w << "x" << candidate_bin.h << std::endl;
 
-        root.reset(&candidate_bin);
+        root.reset(Some(candidate_bin));
 
         let mut total_inserted_area = 0;
 
@@ -101,7 +103,7 @@ fn best_packing_for_ordering_impl<K>(
                 candidate_bin.h -= step;
             }
 
-            root.reset(&candidate_bin);
+            root.reset(Some(candidate_bin));
         } else {
             /* Attempt ended with failure. Try with a bigger bin. */
 
@@ -131,8 +133,8 @@ fn best_packing_for_ordering_impl<K>(
     }
 }
 
-fn best_packing_for_ordering<K>(
-    root: &mut EmptySpaces,
+fn best_packing_for_ordering<P: Packer, K>(
+    root: &mut P,
     ordering: &[RectInput<K>],
     starting_bin: &Size,
     discard_step: i32,
@@ -215,23 +217,7 @@ fn find_best_packing_impl<'a, K: Copy + 'a>(
 
     for r in best_order {
         if let Some(rect) = root.insert(r.w, r.h) {
-            if !(handle_successful_insertion)(Frame {
-                key: r.key,
-                uv: Rect {
-                    x: rect.x,
-                    y: rect.y,
-                    w: rect.w,
-                    h: rect.h,
-                },
-                flipped: rect.flipped,
-                trimmed: false,
-                source: Rect {
-                    x: 0,
-                    y: 0,
-                    w: r.w,
-                    h: r.h,
-                },
-            }) {
+            if !(handle_successful_insertion)(rect) {
                 break;
             }
         } else {

@@ -2,7 +2,7 @@
 // https://cgi.csc.liv.ac.uk/~epa/surveyhtml.html
 // https://github.com/emilk/egui look for texture_atlas.rs
 
-use crate::{Packer, PackerConfig, Rectf};
+use crate::{Packer, PackerConfig, Rectf, Size};
 
 /// Same implementation used by `egui`.
 #[derive(Clone)]
@@ -13,6 +13,7 @@ pub struct StripPacker {
     row_height: u32,
     /// Set when someone requested more space than was available.
     overflowed: bool,
+    used_area: Size,
 }
 
 impl StripPacker {
@@ -22,6 +23,7 @@ impl StripPacker {
             cursor: [0; 2],
             row_height: 0,
             overflowed: false,
+            used_area: Size::ZERO,
         }
     }
 
@@ -66,21 +68,33 @@ impl Packer for StripPacker {
             return None;
         }
 
-        let pos = self.cursor;
-        self.cursor[0] += w;
-
-        Some(Rectf {
-            x: pos[0],
-            y: pos[1],
+        let rect = Rectf {
+            x: self.cursor[0],
+            y: self.cursor[1],
             w,
             h,
             flipped: false,
-        })
+        };
+
+        self.cursor[0] += w;
+
+        self.used_area.expand_with(&rect);
+
+        Some(rect)
     }
 
-    fn reset(&mut self) {
+    fn reset(&mut self, resize: Option<Size>) {
+        if let Some(Size { w, h }) = resize {
+            self.config.max_width = w;
+            self.config.max_height = h;
+        }
         self.cursor = [0; 2];
         self.row_height = 0;
         self.overflowed = false;
+        self.used_area = Size::ZERO;
+    }
+
+    fn used_area(&self) -> Size {
+        self.used_area
     }
 }

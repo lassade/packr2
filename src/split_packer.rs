@@ -140,7 +140,7 @@ fn insert_and_split(w: u32, h: u32, space_available: &Rect /* Space rectangle */
 /// Derived from the [lightmap packer](https://blackpawn.com/texts/lightmaps/default.html)
 /// but uses a vector instead a tree, sourced from [`rectpack2D`](https://github.com/TeamHypersomnia/rectpack2D)
 pub struct SplitPacker {
-    current_aabb: Size,
+    used_area: Size,
     spaces: Vec<Rect>,
     config: PackerConfig,
 }
@@ -148,7 +148,7 @@ pub struct SplitPacker {
 impl SplitPacker {
     pub fn new(config: PackerConfig) -> Self {
         let mut tmp = Self {
-            current_aabb: Size { w: 0, h: 0 },
+            used_area: Size::ZERO,
             spaces: vec![],
             config,
         };
@@ -160,15 +160,6 @@ impl SplitPacker {
         });
         tmp
     }
-
-    pub const fn get_rects_aabb(&self) -> Size {
-        self.current_aabb
-    }
-
-    // #[inline]
-    // fn get_spaces(&self) -> &[Rect] {
-    //     &self.spaces[..]
-    // }
 }
 
 impl Packer for SplitPacker {
@@ -204,7 +195,7 @@ impl Packer for SplitPacker {
                     }
                 };
 
-                self.current_aabb.expand_with(&r);
+                self.used_area.expand_with(&r);
 
                 Some(r)
             };
@@ -240,8 +231,13 @@ impl Packer for SplitPacker {
         None
     }
 
-    fn reset(&mut self) {
-        self.current_aabb = Size { w: 0, h: 0 };
+    fn reset(&mut self, resize: Option<Size>) {
+        if let Some(Size { w, h }) = resize {
+            self.config.max_width = w;
+            self.config.max_height = h;
+        }
+
+        self.used_area = Size::ZERO;
         self.spaces.clear();
         self.spaces.push(Rect {
             x: 0,
@@ -249,5 +245,9 @@ impl Packer for SplitPacker {
             w: self.config.max_width,
             h: self.config.max_height,
         });
+    }
+
+    fn used_area(&self) -> Size {
+        self.used_area
     }
 }

@@ -1,5 +1,7 @@
 // original source copied from: texture_packer https://github.com/PistonDevelopers/texture_packer
 
+use crate::Size;
+
 use super::{Packer, PackerConfig, Rect, Rectf};
 use std::cmp::max;
 
@@ -25,6 +27,7 @@ pub struct SkylinePacker {
     config: PackerConfig,
     // the skylines are sorted by their `x` position
     skylines: Vec<Skyline>,
+    used_area: Size,
 }
 
 impl SkylinePacker {
@@ -35,7 +38,11 @@ impl SkylinePacker {
             w: config.max_width,
         }];
 
-        SkylinePacker { config, skylines }
+        SkylinePacker {
+            config,
+            skylines,
+            used_area: Size::ZERO,
+        }
     }
 
     // return `rect` if rectangle (w, h) can fit the skyline started at `i`
@@ -140,18 +147,28 @@ impl Packer for SkylinePacker {
         if let Some((i, rect)) = self.find_skyline(w, h) {
             self.split(i, &rect);
             self.merge();
+            self.used_area.expand_with(&rect);
             Some(Rectf::from_rect(rect, w != rect.w))
         } else {
             None
         }
     }
 
-    fn reset(&mut self) {
+    fn reset(&mut self, resize: Option<Size>) {
+        if let Some(Size { w, h }) = resize {
+            self.config.max_width = w;
+            self.config.max_height = h;
+        }
+        self.used_area = Size::ZERO;
         self.skylines.clear();
         self.skylines.push(Skyline {
             x: 0,
             y: 0,
             w: self.config.max_width,
         });
+    }
+
+    fn used_area(&self) -> Size {
+        self.used_area
     }
 }
