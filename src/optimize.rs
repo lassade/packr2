@@ -26,7 +26,7 @@ enum PackingResult {
 // If we've found a viable bin that is smaller or equal to starting_bin, the search succeeds.
 // In this case, we return the viable bin (rect_wh).
 
-#[inline]
+#[inline(always)]
 fn best_packing_for_ordering_impl<P: Packer, K>(
     root: &mut P,
     ordering: &[RectInput<K>],

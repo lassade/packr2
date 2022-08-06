@@ -50,7 +50,7 @@ impl Splits {
     }
 }
 
-#[inline]
+#[inline(always)]
 fn insert_and_split(w: u32, h: u32, space_available: Rect) -> Splits {
     if space_available.w < w || space_available.h < h {
         // Image is bigger than the candidate empty space.
@@ -182,6 +182,35 @@ impl SplitPacker {
         );
         tmp
     }
+
+    #[inline(always)]
+    fn accept_insert(
+        &mut self,
+        mut rect: Rect,
+        i: usize,
+        splits: &Splits,
+        flipped: bool,
+    ) -> Option<Rectf> {
+        self.spaces.remove(i);
+
+        for s in 0..splits.count as usize {
+            // note: it can never fail to insert more spaces, but if it does you must return `None` here!
+            self.spaces.push(splits.spaces[s].into());
+        }
+
+        // rectangles sorted globably performs much better
+        self.spaces.sort_by(|a, b| a.area.cmp(&b.area));
+
+        if flipped {
+            core::mem::swap(&mut rect.w, &mut rect.h);
+        }
+
+        let rect = Rectf::from_rect(rect, flipped);
+
+        self.used_area.expand_with(&rect);
+
+        Some(rect)
+    }
 }
 
 impl Packer for SplitPacker {
@@ -191,64 +220,55 @@ impl Packer for SplitPacker {
 
             let normal = insert_and_split(w, h, candidate_space.rect);
 
-            let mut accept_insert = |splits: &Splits, flipped| -> Option<Rectf> {
-                self.spaces.remove(i);
-
-                for s in 0..splits.count as usize {
-                    // note: it can never fail to insert more spaces, but if it does you must return `None` here!
-                    self.spaces.push(splits.spaces[s].into());
-                }
-
-                // rectangles sorted globably performs much better
-                self.spaces.sort_by(|a, b| a.area.cmp(&b.area));
-
-                let r = if flipped {
-                    Rectf {
-                        x: candidate_space.rect.x,
-                        y: candidate_space.rect.y,
-                        w: h,
-                        h: w,
-                        flipped,
-                    }
-                } else {
-                    Rectf {
-                        x: candidate_space.rect.x,
-                        y: candidate_space.rect.y,
-                        w,
-                        h,
-                        flipped,
-                    }
-                };
-
-                self.used_area.expand_with(&r);
-
-                Some(r)
-            };
-
             if self.config.allow_flipping {
                 let flipped = insert_and_split(h, w, candidate_space.rect);
 
                 match (normal.is_valid(), flipped.is_valid()) {
                     (true, true) => {
+                        let rect = Rect {
+                            x: candidate_space.rect.x,
+                            y: candidate_space.rect.y,
+                            w,
+                            h,
+                        };
+
                         // if both were successful, prefer the one that generated less remainder spaces.
                         if flipped.better_than(&normal) {
                             // Accept the flipped result if it producues less or "better" spaces.
-                            return (accept_insert)(&flipped, true);
+                            return self.accept_insert(rect, i, &flipped, true);
                         }
 
-                        return (accept_insert)(&normal, false);
+                        return self.accept_insert(rect, i, &normal, false);
                     }
                     (true, _) => {
-                        return (accept_insert)(&normal, false);
+                        let rect = Rect {
+                            x: candidate_space.rect.x,
+                            y: candidate_space.rect.y,
+                            w,
+                            h,
+                        };
+                        return self.accept_insert(rect, i, &normal, false);
                     }
                     (_, true) => {
-                        return (accept_insert)(&flipped, true);
+                        let rect = Rect {
+                            x: candidate_space.rect.x,
+                            y: candidate_space.rect.y,
+                            w,
+                            h,
+                        };
+                        return self.accept_insert(rect, i, &flipped, true);
                     }
                     _ => {}
                 }
             } else {
                 if normal.is_valid() {
-                    return (accept_insert)(&normal, false);
+                    let rect = Rect {
+                        x: candidate_space.rect.x,
+                        y: candidate_space.rect.y,
+                        w,
+                        h,
+                    };
+                    return self.accept_insert(rect, i, &normal, false);
                 }
             }
         }
