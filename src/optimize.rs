@@ -2,13 +2,6 @@ use crate::{Packer, Size};
 
 // find best packing implementation
 
-#[derive(Clone, Debug)]
-pub struct RectInput<K> {
-    pub key: K,
-    pub w: u32,
-    pub h: u32,
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum bin_dimension {
     Both,

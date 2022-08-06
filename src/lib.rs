@@ -1,19 +1,12 @@
 //! Rectangle packing algorithm
 
-// useful refs https://cgi.csc.liv.ac.uk/~epa/surveyhtml.html
-// todo: include egui algorithm witch is a strip_packer
-// todo: include maybe `rectpack2D` (but using a dynamic version)
-// todo: https://blackpawn.com/texts/lightmaps/default.html
-
-// original source copied from: texture_packer https://github.com/PistonDevelopers/texture_packer
-
-use std::ops::Deref;
+use core::cmp::Ordering;
 
 pub use skyline_packer::SkylinePacker;
 pub use split_packer::SplitPacker;
 pub use strip_packer::StripPacker;
 
-mod optimize;
+//mod optimize;
 mod skyline_packer;
 mod split_packer;
 mod strip_packer;
@@ -41,7 +34,7 @@ impl Default for PackerConfig {
 }
 
 /// Defines a rectangle in pixels with the origin at the top-left of the texture atlas.
-#[derive(Copy, Clone, Debug)]
+#[derive(Default, Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Rect {
     pub x: u32,
@@ -54,6 +47,17 @@ impl Rect {
     /// Create a new [Rect] based on a position and its width and height.
     pub fn new(x: u32, y: u32, w: u32, h: u32) -> Rect {
         Rect { x, y, w, h }
+    }
+
+    pub const fn area(&self) -> u32 {
+        self.w * self.h
+    }
+
+    pub const fn size(&self) -> Size {
+        Size {
+            w: self.w,
+            h: self.h,
+        }
     }
 
     /// Get the top coordinate of the rectangle.
@@ -92,6 +96,7 @@ impl Rect {
 }
 
 /// [`Rect`] that could be flipped sideway (rotated by 90 degrees clockwise)
+#[derive(Default, Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Rectf {
     pub x: u32,
@@ -113,7 +118,7 @@ impl Rectf {
     }
 }
 
-impl Deref for Rectf {
+impl core::ops::Deref for Rectf {
     type Target = Rect;
 
     fn deref(&self) -> &Self::Target {
@@ -178,4 +183,87 @@ pub trait Packer {
     fn insert(&mut self, w: u32, h: u32) -> Option<Rectf>;
     fn reset(&mut self, resize: Option<Size>);
     fn used_area(&self) -> Size;
+}
+
+#[derive(Clone, Copy)]
+pub struct RectInput<K> {
+    pub size: Size,
+    pub key: K,
+}
+
+#[derive(Clone, Copy)]
+pub struct RectOutput<K> {
+    pub rect: Rectf,
+    pub atlas: usize,
+    pub key: K,
+}
+
+pub const RECT_SORT_FUNCTIONS: [fn(Size, Size) -> Ordering; 6] = [
+    |a: Size, b: Size| b.area().cmp(&a.area()),
+    |a: Size, b: Size| b.perimeter().cmp(&a.perimeter()),
+    |a: Size, b: Size| (b.w.max(b.h)).cmp(&(a.w.max(a.h))),
+    |a: Size, b: Size| b.w.cmp(&a.w),
+    |a: Size, b: Size| b.h.cmp(&a.h),
+    |a: Size, b: Size| {
+        if b.pathological_mult() < a.pathological_mult() {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    },
+];
+
+/// Sorts the input data using the vaious heuristics defined in [`RECT_SORT_FUNCTIONS`] to find the best possible packing,
+/// the results might end up been inside multiple atlases.
+pub fn pack<P: Packer, K: Copy>(
+    inputs: &mut Vec<RectInput<K>>,
+    mut packer: P,
+) -> Vec<RectOutput<K>> {
+    let mut output = vec![];
+    let mut output_area = core::u32::MAX;
+
+    let mut current = vec![];
+    let mut current_area;
+
+    for cmp in RECT_SORT_FUNCTIONS {
+        current.clear();
+        current_area = 0;
+
+        inputs.sort_by(|a, b| (cmp)(a.size, b.size));
+        let mut iterator = inputs.iter();
+
+        // use as many atlas as needed
+        let mut atlas = 0;
+        'atlasing: loop {
+            packer.reset(None);
+
+            loop {
+                if let Some(input) = iterator.next() {
+                    if let Some(rect) = packer.insert(input.size.w, input.size.h) {
+                        current.push(RectOutput {
+                            rect,
+                            atlas,
+                            key: input.key,
+                        });
+                    } else {
+                        // use another atlas
+                        current_area += packer.used_area().area();
+                        atlas += 1;
+                        break;
+                    }
+                } else {
+                    break 'atlasing;
+                }
+            }
+        }
+
+        current_area += packer.used_area().area();
+
+        if current_area < output_area {
+            output_area = current_area;
+            core::mem::swap(&mut current, &mut output);
+        }
+    }
+
+    output
 }

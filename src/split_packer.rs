@@ -51,7 +51,7 @@ impl Splits {
 }
 
 #[inline]
-fn insert_and_split(w: u32, h: u32, space_available: &Rect /* Space rectangle */) -> Splits {
+fn insert_and_split(w: u32, h: u32, space_available: Rect) -> Splits {
     if space_available.w < w || space_available.h < h {
         // Image is bigger than the candidate empty space.
         // We'll need to look further.
@@ -137,11 +137,30 @@ fn insert_and_split(w: u32, h: u32, space_available: &Rect /* Space rectangle */
     return [bigger_split, lesser_split].into();
 }
 
+/// [`Rect`] that could be flipped sideway (rotated by 90 degrees clockwise)
+#[derive(Default, Clone, Copy, Debug)]
+#[repr(C)]
+struct Recta {
+    rect: Rect,
+    area: u32,
+}
+
+impl From<Rect> for Recta {
+    fn from(rect: Rect) -> Self {
+        Self {
+            rect,
+            area: rect.w * rect.h,
+        }
+    }
+}
+
 /// Derived from the [lightmap packer](https://blackpawn.com/texts/lightmaps/default.html)
 /// but uses a vector instead a tree, sourced from [`rectpack2D`](https://github.com/TeamHypersomnia/rectpack2D)
+///
+/// *Performs really porly with unsorted input data*, is best used to bake spritesheets
 pub struct SplitPacker {
     used_area: Size,
-    spaces: Vec<Rect>,
+    spaces: Vec<Recta>,
     config: PackerConfig,
 }
 
@@ -152,43 +171,49 @@ impl SplitPacker {
             spaces: vec![],
             config,
         };
-        tmp.spaces.push(Rect {
-            x: 0,
-            y: 0,
-            w: config.max_width,
-            h: config.max_width,
-        });
+        tmp.spaces.push(
+            Rect {
+                x: 0,
+                y: 0,
+                w: config.max_width,
+                h: config.max_width,
+            }
+            .into(),
+        );
         tmp
     }
 }
 
 impl Packer for SplitPacker {
     fn insert(&mut self, w: u32, h: u32) -> Option<Rectf> {
-        for i in (0..self.spaces.len()).rev() {
+        for i in 0..self.spaces.len() {
             let candidate_space = self.spaces[i];
 
-            let normal = insert_and_split(w, h, &candidate_space);
+            let normal = insert_and_split(w, h, candidate_space.rect);
 
             let mut accept_insert = |splits: &Splits, flipped| -> Option<Rectf> {
                 self.spaces.remove(i);
 
                 for s in 0..splits.count as usize {
                     // note: it can never fail to insert more spaces, but if it does you must return `None` here!
-                    self.spaces.push(splits.spaces[s]);
+                    self.spaces.push(splits.spaces[s].into());
                 }
+
+                // rectangles sorted globably performs much better
+                self.spaces.sort_by(|a, b| a.area.cmp(&b.area));
 
                 let r = if flipped {
                     Rectf {
-                        x: candidate_space.x,
-                        y: candidate_space.y,
+                        x: candidate_space.rect.x,
+                        y: candidate_space.rect.y,
                         w: h,
                         h: w,
                         flipped,
                     }
                 } else {
                     Rectf {
-                        x: candidate_space.x,
-                        y: candidate_space.y,
+                        x: candidate_space.rect.x,
+                        y: candidate_space.rect.y,
                         w,
                         h,
                         flipped,
@@ -201,7 +226,7 @@ impl Packer for SplitPacker {
             };
 
             if self.config.allow_flipping {
-                let flipped = insert_and_split(h, w, &candidate_space);
+                let flipped = insert_and_split(h, w, candidate_space.rect);
 
                 match (normal.is_valid(), flipped.is_valid()) {
                     (true, true) => {
@@ -239,12 +264,15 @@ impl Packer for SplitPacker {
 
         self.used_area = Size::ZERO;
         self.spaces.clear();
-        self.spaces.push(Rect {
-            x: 0,
-            y: 0,
-            w: self.config.max_width,
-            h: self.config.max_height,
-        });
+        self.spaces.push(
+            Rect {
+                x: 0,
+                y: 0,
+                w: self.config.max_width,
+                h: self.config.max_height,
+            }
+            .into(),
+        );
     }
 
     fn used_area(&self) -> Size {
