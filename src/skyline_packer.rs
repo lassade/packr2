@@ -5,6 +5,7 @@ use crate::Size;
 use super::{Packer, PackerConfig, Rect, Rectf};
 use std::cmp::max;
 
+#[derive(Clone)]
 struct Skyline {
     pub x: u32,
     pub y: u32,
@@ -23,6 +24,7 @@ impl Skyline {
     }
 }
 
+#[derive(Clone)]
 pub struct SkylinePacker {
     config: PackerConfig,
     // the skylines are sorted by their `x` position

@@ -158,6 +158,7 @@ impl From<Rect> for Recta {
 /// but uses a vector instead a tree, sourced from [`rectpack2D`](https://github.com/TeamHypersomnia/rectpack2D)
 ///
 /// *Performs really porly with unsorted input data*, is best used to bake spritesheets
+#[derive(Clone)]
 pub struct SplitPacker {
     used_area: Size,
     spaces: Vec<Recta>,
