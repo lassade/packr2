@@ -1,5 +1,10 @@
 //! Rectangle packing algorithm
 
+#![no_std]
+
+extern crate alloc;
+
+use alloc::{vec, vec::Vec};
 use core::cmp::Ordering;
 
 pub use skyline_packer::SkylinePacker;

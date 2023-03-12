@@ -1,4 +1,5 @@
 use crate::{Packer, PackerConfig, Rect, Rectf, Size};
+use alloc::{vec, vec::Vec};
 
 struct Splits {
     count: u32,
@@ -6,6 +7,7 @@ struct Splits {
 }
 
 impl From<Rect> for Splits {
+    #[allow(invalid_value)]
     fn from(space: Rect) -> Self {
         Self {
             count: 1,
@@ -25,6 +27,7 @@ impl From<[Rect; 2]> for Splits {
 }
 
 impl Splits {
+    #[allow(invalid_value)]
     const fn failed() -> Self {
         Self {
             count: core::u32::MAX,
@@ -33,6 +36,7 @@ impl Splits {
         }
     }
 
+    #[allow(invalid_value)]
     const fn none() -> Self {
         Self {
             count: 0,

@@ -3,7 +3,8 @@
 use crate::Size;
 
 use super::{Packer, PackerConfig, Rect, Rectf};
-use std::cmp::max;
+use alloc::{vec, vec::Vec};
+use core::cmp::max;
 
 #[derive(Clone)]
 struct Skyline {
@@ -69,8 +70,8 @@ impl SkylinePacker {
     }
 
     fn find_skyline(&self, w: u32, h: u32) -> Option<(usize, Rect)> {
-        let mut bottom = std::u32::MAX;
-        let mut width = std::u32::MAX;
+        let mut bottom = core::u32::MAX;
+        let mut width = core::u32::MAX;
         let mut index = None;
         let mut rect = Rect::new(0, 0, 0, 0);
 
